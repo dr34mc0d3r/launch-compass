@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launch Compass – Parrish → SLC-40</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+  :root { box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html, body { background: #0b1020; color: #e8ecf5; min-height: 100%; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+  #dial { transition: transform 0.08s linear; will-change: transform; }
+  .locked { color: #34d399; }
+</style>
+</head>
+<body class="min-h-screen">
+<main class="mx-auto flex max-w-md flex-col items-center px-5 py-6">
+
+  <h1 class="text-xl font-bold tracking-tight">🚀 Launch Compass</h1>
+  <p class="mt-1 text-center text-sm text-slate-400">Parrish, FL → Cape Canaveral SLC-40</p>
+
+  <div class="mt-5 grid w-full grid-cols-3 gap-2 text-center">
+    <div class="rounded-xl bg-slate-800/70 p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Target</div>
+      <div id="bearingVal" class="text-xl font-semibold">–</div>
+    </div>
+    <div class="rounded-xl bg-slate-800/70 p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Heading</div>
+      <div id="headingVal" class="text-xl font-semibold">–</div>
+    </div>
+    <div class="rounded-xl bg-slate-800/70 p-3">
+      <div class="text-[11px] uppercase tracking-wide text-slate-400">Distance</div>
+      <div id="distVal" class="text-xl font-semibold">–</div>
+    </div>
+  </div>
+
+  <!-- Compass -->
+  <div class="relative mt-6 aspect-square w-full max-w-[340px]">
+    <!-- fixed pointer at top (your phone's facing direction) -->
+    <div class="absolute left-1/2 top-[-6px] z-10 -translate-x-1/2">
+      <svg width="28" height="22" viewBox="0 0 28 22"><path d="M14 22 L2 2 L26 2 Z" fill="#f8fafc"/></svg>
+    </div>
+    <svg id="dial" viewBox="-100 -100 200 200" class="h-full w-full">
+      <circle r="96" fill="#111a33" stroke="#334155" stroke-width="2"/>
+      <g id="ticks"></g>
+      <g font-size="11" font-weight="700" text-anchor="middle" fill="#cbd5e1">
+        <text y="-70" fill="#f87171">N</text>
+        <text x="70" y="4">E</text>
+        <text y="78">S</text>
+        <text x="-70" y="4">W</text>
+      </g>
+      <!-- target marker (rotated to bearing) -->
+      <g id="target">
+        <line x1="0" y1="-20" x2="0" y2="-80" stroke="#fb923c" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6"/>
+        <circle cy="-88" r="9" fill="#fb923c"/>
+        <text y="-84" font-size="11" text-anchor="middle">🚀</text>
+      </g>
+      <circle r="4" fill="#e2e8f0"/>
+    </svg>
+  </div>
+
+  <div id="status" class="mt-5 text-center text-3xl font-bold">Tap Start</div>
+  <div id="hint" class="mt-1 min-h-[1.5rem] text-center text-sm text-slate-400">Allow motion &amp; orientation access when asked.</div>
+
+  <button id="startBtn" class="mt-5 w-full rounded-2xl bg-orange-500 px-6 py-4 text-lg font-semibold text-white active:bg-orange-600">
+    Start compass
+  </button>
+
+  <details class="mt-6 w-full rounded-xl bg-slate-800/50 p-4 text-sm text-slate-300">
+    <summary class="cursor-pointer font-medium">Settings</summary>
+    <label class="mt-3 flex items-center justify-between gap-3">
+      <span>Apply magnetic declination</span>
+      <input id="declToggle" type="checkbox" checked class="h-5 w-5 accent-orange-500">
+    </label>
+    <label class="mt-3 flex items-center justify-between gap-3">
+      <span>Declination (° E+ / W−)</span>
+      <input id="declVal" type="number" step="0.1" value="-5.3" class="w-24 rounded-lg bg-slate-900 px-2 py-1 text-right">
+    </label>
+    <label class="mt-3 flex items-center justify-between gap-3">
+      <span>Alignment tolerance (°)</span>
+      <input id="tolVal" type="number" step="1" value="5" class="w-24 rounded-lg bg-slate-900 px-2 py-1 text-right">
+    </label>
+    <p class="mt-3 text-xs text-slate-400">
+      Phone compasses report <em>magnetic</em> north; the target bearing is <em>true</em>. Around Sarasota
+      magnetic north is ~5° west of true, so the correction is on by default. If the arrow seems about 5° off when
+      you check against a known landmark, toggle it.
+    </p>
+    <p class="mt-2 text-xs text-slate-400">
+      Hold the phone flat (screen up) and away from metal, cars and speakers. Do a figure-8 motion if it seems off.
+    </p>
+  </details>
+
+  <p class="mt-6 text-center text-xs text-slate-500">
+    Rockets climb as they go downrange – once you’re facing the bearing, scan from the horizon up to ~30°.
+  </p>
+</main>
+
+<script>
+(function () {
+  // Parrish, FL and Cape Canaveral SLC-40 (approx.)
+  var FROM = { lat: 27.5878, lon: -82.4251 };
+  var TO   = { lat: 28.5619, lon: -80.5772 };
+
+  var rad = function (d) { return d * Math.PI / 180; };
+  var deg = function (r) { return r * 180 / Math.PI; };
+  var norm = function (a) { return ((a % 360) + 360) % 360; };
+
+  function bearing(a, b) {
+    var p1 = rad(a.lat), p2 = rad(b.lat), dl = rad(b.lon - a.lon);
+    var y = Math.sin(dl) * Math.cos(p2);
+    var x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return norm(deg(Math.atan2(y, x)));
+  }
+  function distanceKm(a, b) {
+    var R = 6371, dp = rad(b.lat - a.lat), dl = rad(b.lon - a.lon);
+    var h = Math.sin(dp / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dl / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var target = bearing(FROM, TO);
+  var km = distanceKm(FROM, TO);
+
+  $('bearingVal').textContent = Math.round(target) + '°';
+  $('distVal').textContent = Math.round(km * 0.621371) + ' mi';
+  $('target').setAttribute('transform', 'rotate(' + target + ')');
+
+  // Dial ticks
+  var ticks = '';
+  for (var i = 0; i < 72; i++) {
+    var major = i % 9 === 0, len = major ? 10 : 5;
+    ticks += '<line x1="0" y1="-90" x2="0" y2="' + (-90 + len) + '" stroke="' +
+             (major ? '#94a3b8' : '#475569') + '" stroke-width="' + (major ? 2 : 1) +
+             '" transform="rotate(' + (i * 5) + ')"/>';
+  }
+  $('ticks').innerHTML = ticks;
+
+  function compassName(b) {
+    var n = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return n[Math.round(b / 22.5) % 16];
+  }
+  $('hint').textContent = 'Face ' + Math.round(target) + '° true (' + compassName(target) + '). Allow motion access when asked.';
+
+  var smoothed = null, started = false;
+
+  function onHeading(raw) {
+    if (raw == null || isNaN(raw)) return;
+    // circular low-pass filter
+    if (smoothed === null) smoothed = raw;
+    else {
+      var d = ((raw - smoothed + 540) % 360) - 180;
+      smoothed = norm(smoothed + d * 0.2);
+    }
+    var h = smoothed;
+    if ($('declToggle').checked) h = norm(h + (parseFloat($('declVal').value) || 0));
+
+    $('headingVal').textContent = Math.round(h) + '°';
+    $('dial').style.transform = 'rotate(' + (-h) + 'deg)';
+
+    var diff = ((target - h + 540) % 360) - 180; // + = turn right
+    var tol = parseFloat($('tolVal').value) || 5;
+    var st = $('status');
+    if (Math.abs(diff) <= tol) {
+      st.textContent = '✅ Look here!';
+      st.classList.add('locked');
+      $('hint').textContent = 'Facing the launch pad. Scan the horizon up to ~30° elevation.';
+    } else {
+      st.classList.remove('locked');
+      st.textContent = (diff > 0 ? 'Turn right ' : 'Turn left ') + Math.round(Math.abs(diff)) + '°';
+      $('hint').textContent = 'Target: ' + Math.round(target) + '° true (' + compassName(target) + ')';
+    }
+  }
+
+  function handleEvent(e) {
+    var h = null;
+    if (typeof e.webkitCompassHeading === 'number') {
+      h = e.webkitCompassHeading;                     // iOS
+    } else if (e.absolute && e.alpha != null) {
+      h = 360 - e.alpha;                              // Android absolute
+    } else if (e.alpha != null && !('webkitCompassHeading' in e)) {
+      h = 360 - e.alpha;                              // fallback (may be relative)
+    }
+    if (h != null) {
+      // compensate for screen orientation
+      var so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+      onHeading(norm(h + so));
+    }
+  }
+
+  function listen() {
+    if (started) return;
+    started = true;
+    if ('ondeviceorientationabsolute' in window) {
+      window.addEventListener('deviceorientationabsolute', handleEvent, true);
+    } else {
+      window.addEventListener('deviceorientation', handleEvent, true);
+    }
+    $('startBtn').classList.add('hidden');
+    $('status').textContent = 'Calibrating…';
+    setTimeout(function () {
+      if (smoothed === null) {
+        $('status').textContent = 'No compass data';
+        $('hint').textContent = 'Open this page over HTTPS in Safari/Chrome on your phone and allow motion access.';
+        $('startBtn').classList.remove('hidden');
+        $('startBtn').textContent = 'Try again';
+        started = false;
+      }
+    }, 3000);
+  }
+
+  $('startBtn').addEventListener('click', function () {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(function (res) {
+          if (res === 'granted') listen();
+          else {
+            $('status').textContent = 'Permission denied';
+            $('hint').textContent = 'Settings → Safari → Motion & Orientation Access, or reload and tap Allow.';
+          }
+        }).catch(function (err) {
+          $('status').textContent = 'Sensor error';
+          $('hint').textContent = String(err);
+        });
+      } else {
+        listen();
+      }
+    } catch (err) {
+      $('status').textContent = 'Sensor error';
+      $('hint').textContent = String(err);
+    }
+  });
+})();
+</script>
+</body>
+</html>
